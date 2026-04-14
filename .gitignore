@@ -1,0 +1,25 @@
+# Data (large, on 5080 machine)
+Data/
+dataset/
+checkpoints*/
+results*/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE / OS
+.DS_Store
+.claude/
+.pytest_cache/
+.ruff_cache/
+
+# Syncthing
+.stignore
+.stfolder/
+
+# Scratch images
+*.png
+# (keep wiki/ and code — PNGs are result artifacts)
