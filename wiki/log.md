@@ -74,3 +74,46 @@
 - Integrated into evaluate.py as `--calibrate` flag with `fit_calibrator()` function
 - Also improved DataLoader performance: num_workers=4, pin_memory, persistent_workers (GPU util 76%→99%)
 - See wiki/analysis-exp3.md for full research trace
+
+## [2026-04-16] session | V2 bounding box pipeline scaffolding
+- Team feedback from Gia Hiếu: create V2 branch for storm bbox prediction (minX, minY, maxX, maxY)
+- ML heuristic analysis: single-object localization (bbox regression), not detection. ~1,480 images = small dataset.
+- Researched domain-specific pretrained models: GraphCast, Prithvi-WxC, Prithvi-EO, FengWu — none fit (expect gridded atmo fields or wrong sensor). ResNet18 is pragmatic choice.
+- Added `detect_largest_storm_bbox()` to applyADT.py — takes max contour instead of iterating all
+- Created v2/ subdirectory with full pipeline: batch_bbox.py, dataset.py, models.py, train.py, evaluate.py
+- StormBboxNet: ResNet18 backbone, 1-channel adapter (avg pretrained weights), Sigmoid head → [0,1] normalized coords
+- Phased unfreezing schedule: frozen → layer3+4 → all, with differential learning rates
+- 26/26 V2 tests passing, 123 V1 tests still passing (no regression)
+- Created draw.io architecture diagram showing V1 + V2 side by side with shared data source
+- Next: generate bbox labels on 5080 machine, train baseline
+
+## [2026-04-17] session | V2 training and convergence
+- Generated bbox labels: 1,480 images → 1,480 labels (0 skipped, every image had a storm), 24s
+- Dataset stats: bbox width mean=0.091 (storms ~0.7% of image area), good position spread across disk
+- Exp 1 (SmoothL1, minmax output): mean IoU=0.139 — size variance collapse (width std 0.006 vs target 0.026)
+- Exp 2 (GIoU loss): total failure — IoU=0.0, GIoU can't bootstrap from zero overlap
+- Exp 2b (center+size parameterization, SmoothL1): mean IoU=0.256 — valid boxes, better position
+- Exp 3 (cxywh-space loss): mean IoU=0.227 — improved size variance but worse position
+- Exp 3b (combined minmax + cxywh loss): mean IoU=0.222 — combined loss re-collapsed size
+- **Exp 4 (Exp 2b + augmentation disabled): mean IoU=0.370, IoU@0.5=36.5% — PRIMARY CRITERION MET**
+- Key insight: with only 1,480 images, rotation/flip augmentation destroyed spatial context needed for localization
+- Model: center+size parameterization (predicts cx,cy,w,h → converts to minmax), SmoothL1 loss, no augmentation
+- 29/29 V2 tests passing (added 3 GIoU loss tests)
+
+## [2026-04-18] session | V2 secondary criterion push — TTA killed
+- Exp 5 (DIoU loss) and Exp 7 (Mixup) previously regressed (0.370 → 0.181 / 0.326). Both "soft" interventions failed.
+- Exp TTA: added `tta_predict()` + `--tta` flag to v2/evaluate.py; 4-way rotation with inverse-transform averaging.
+- Result: mean IoU 0.370 → 0.024 (catastrophic). Per-rotation diagnostic: k=0 (baseline) IoU=0.370, k=1/2/3 IoU ≤ 0.022 each. Even 2-way hflip TTA drops to 0.089.
+- **Finding**: Exp 4's model is not rotation/flip-invariant — it learned a tight spatial prior (storms cluster near x≈0.5, y≈0.4). Any spatial transform breaks the prior, so TTA averaging destroys signal.
+- **Tradeoff exposed**: augmentation at training time destroys performance (Exp 1) AND inference-time TTA destroys performance (Exp TTA). The model's strength is exactly the prior that both break.
+- 37/37 V2 tests passing (added 4 TTA tests + inverse-rotation recovery test).
+- Kill TTA. Next option: Exp 8 (resolution bump 512→768) targets the small-storm bucket (n=16, IoU=0.117), which is orthogonal to the spatial-prior issue.
+
+## [2026-04-28] session | V2 Exp 8 — resolution bump, V2 concluded
+- Exp 8: changed `TARGET_SIZE` from 512 to 768 in `v2/batch_bbox.py`. Regenerated all 1,480 .npy files at 768×768.
+- Model architecture unchanged (AdaptiveAvgPool is resolution-agnostic). Batch size dropped 16→8 for memory.
+- Training: early stopped ep 48, best ep 33 (val loss 0.0027). Same config as Exp 4 (SmoothL1, no-augment).
+- Results: mean IoU=0.373, IoU@0.5=37.4% — **+0.8% over Exp 4, well under 5% threshold**.
+- Resolution is not the bottleneck. Dataset size (1,480 images) is the binding constraint.
+- **V2 concluded**: 4 consecutive experiments failed stop criterion. Exp 4 is final champion (IoU=0.370, IoU@0.5=36.5%).
+- 37/37 V2 tests passing (updated tensor shapes 512→768).

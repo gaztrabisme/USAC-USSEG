@@ -142,6 +142,44 @@ def auto_detect_storm_and_apply_adt(temp_c_data, box_size=240, output_img="cropp
     
     return all_results
 
+def detect_largest_storm_bbox(temp_c_data, min_area=500):
+    """Find the largest cold-cloud contour and return its bounding box.
+
+    Args:
+        temp_c_data: 2D numpy array of temperature in Celsius
+        min_area: Minimum contour area in pixels to be considered valid
+
+    Returns:
+        dict with keys: bbox (minX, minY, maxX, maxY), area, center (cx, cy)
+        None if no valid contour found
+    """
+    cloud_mask = (temp_c_data < -50.0).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(cloud_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    valid_contours = [c for c in contours if cv2.contourArea(c) > min_area]
+    if not valid_contours:
+        return None
+
+    largest = max(valid_contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(largest)
+    area = cv2.contourArea(largest)
+
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        cx, cy = x + w // 2, y + h // 2
+    else:
+        cx = int(M["m10"] / M["m00"])
+        cy = int(M["m01"] / M["m00"])
+
+    return {
+        'bbox': (x, y, x + w, y + h),  # (minX, minY, maxX, maxY)
+        'area': int(area),
+        'center': (cx, cy),
+    }
+
+
 def map_t_number_to_intensity(t_num):
     """Bảng tra cứu Dvorak chuẩn: T-number -> Gió (Knots) & Áp suất (hPa)"""
     if t_num < 1.5: return 25, 1009

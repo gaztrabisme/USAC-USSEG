@@ -44,7 +44,7 @@ python evaluate.py --model cnnv2 --data_dir dataset/ --checkpoint checkpoints/be
 python -m pytest tests/ -v
 ```
 
-123 tests across `tests/test_data_pipeline.py` and `tests/test_ml_pipeline.py`.
+149 tests across `tests/test_data_pipeline.py`, `tests/test_ml_pipeline.py`, and `tests/test_v2_pipeline.py`.
 
 ## Key Parameters
 
@@ -68,6 +68,60 @@ python -m pytest tests/ -v
 | 3 | Isotonic calibration on Exp 2 model | **0.55** | **13.2 kt** | Both criteria met |
 
 See `wiki/` for detailed analysis of each experiment.
+
+---
+
+## V2: Storm Bounding Box Localization
+
+Separate pipeline in `v2/` that predicts the bounding box of the largest storm candidate in full-disk IR images.
+
+### Pipeline
+
+```
+[PNG+CBOR] → applyADT.py (detect_largest_storm_bbox) → v2/batch_bbox.py → v2/dataset.py → v2/train.py → v2/evaluate.py
+```
+
+### V2 Files
+
+| File | Purpose |
+|------|---------|
+| `v2/batch_bbox.py` | Batch process full-disk images → 512×512 .npy + normalized bbox labels |
+| `v2/dataset.py` | BboxDataset with optional coordinated augmentation (disabled in best config) |
+| `v2/models.py` | StormBboxNet — ResNet18 backbone (1-ch adapter), center+size head → minmax output |
+| `v2/train.py` | SmoothL1/GIoU/cxywh loss, phased unfreezing, checkpoint resume, `--no-augment` |
+| `v2/evaluate.py` | IoU metrics, histogram, center scatter plots |
+
+### Running V2
+
+```bash
+# 1. Generate bbox labels (on 5080 machine)
+python -c "from v2.batch_bbox import generate_dataset; from prepare_data import scan_and_pair; generate_dataset(scan_and_pair('/path/to/data'), 'dataset_v2/')"
+
+# 2. Train (--no-augment is critical — augmentation hurts with small dataset)
+python -m v2.train --data_dir dataset_v2/ --checkpoint_dir checkpoints_v2/ --epochs 100 --no-augment
+
+# 3. Evaluate
+python -m v2.evaluate --data_dir dataset_v2/ --checkpoint checkpoints_v2/best_model.pt --output_dir results_v2/
+```
+
+### V2 Convergence Criteria (primary MET as of Exp 4)
+
+- Primary: Mean IoU > 0.3 on test set — **0.370 (PASS)**
+- Secondary: IoU@0.5 accuracy > 50% — **36.5% (not yet met)**
+
+### V2 Experiment History
+
+| Exp | Change | Mean IoU | IoU@0.5 | Notes |
+|-----|--------|----------|---------|-------|
+| 1 | SmoothL1, minmax output, augment | 0.139 | 5.0% | Size variance collapse |
+| 2b | Center+size parameterization | 0.256 | 17.6% | Valid boxes, better position |
+| **4** | **No augmentation** | **0.370** | **36.5%** | **Primary criterion met** |
+
+### V2 Tests
+
+29 tests in `tests/test_v2_pipeline.py`.
+
+---
 
 ## Dependencies
 

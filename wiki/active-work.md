@@ -67,3 +67,72 @@
 ### Convergence Status: PASS
 - Primary: T-number MAE = 0.55 < 1.0
 - Secondary: Wind MAE = 13.2 kt < 15 kt
+
+---
+
+## V2 Storm Bounding Box Localization
+**Status:** CONCLUDED — Exp 4 champion, stop criterion met
+**Started:** 2026-04-16
+**Goal:** Predict bounding box of largest storm candidate in full-disk IR image
+**Requested by:** Gia Hiếu — separate branch from V1
+
+### Phases
+- [x] Phase A: Detection function (`detect_largest_storm_bbox()` in applyADT.py)
+- [x] Phase B: Pipeline scaffolding (v2/batch_bbox.py, v2/dataset.py, v2/models.py, v2/train.py, v2/evaluate.py)
+- [x] Phase C: Tests (29/29 passing in tests/test_v2_pipeline.py)
+- [x] Phase D: Architecture diagram (draw.io — V1 + V2 side by side)
+- [x] Phase E: Generate bbox labels — 1,480 images, 0 skipped, 0 errors (24s)
+- [x] Phase F: Train and iterate (4 experiments)
+- [x] Phase G: Primary criterion met
+
+### Architecture
+- **Input**: 2200×2200 full-disk IR → resized to 512×512
+- **Model**: StormBboxNet — ResNet18 backbone (1-channel adapter, ~11M params) + FC head
+- **Internal parameterization**: Predicts (cx, cy, w, h) via Sigmoid, converts to (minX, minY, maxX, maxY) — guarantees valid boxes
+- **Loss**: SmoothL1 on normalized coords
+- **Key concern**: Only ~1,480 images (vs 54K patches in V1) — small dataset, pretrained backbone + phased unfreezing essential
+- **Label source**: Largest contour from cloud mask (T < -50°C) — algorithmic, same pattern as V1
+- **Augmentation**: DISABLED — rotation/flip hurts localization with small dataset
+
+### Convergence Criteria
+- Primary: Mean IoU > 0.3 on test set
+- Secondary: IoU@0.5 accuracy > 50%
+- Stop: 3 experiments with < 5% improvement
+
+### Convergence Status: CONCLUDED
+- Primary: Mean IoU = 0.370 > 0.3 **PASS**
+- Secondary: IoU@0.5 = 36.5% < 50% (not met — stop criterion reached)
+
+### Dataset Stats
+- 1,480 full-disk images → 1,480 bbox labels (every image had a detectable storm)
+- Bbox width: mean=0.091±0.026, range=[0.033, 0.321] (storms are small ~0.7% of image area)
+- Position: storms centered around x=0.51, y=0.38 with good spread across the disk
+
+### Experiment History
+
+| Exp | Changes | Mean IoU | IoU@0.5 | Key Finding |
+|-----|---------|----------|---------|-------------|
+| 1 | SmoothL1, minmax output, augment=on | 0.139 | 5.0% | Size variance collapse (constant box size) |
+| 2 | + GIoU loss | 0.000 | 0.0% | GIoU alone can't bootstrap — zero overlap at init |
+| 2b | center+size parameterization, SmoothL1 | 0.256 | 17.6% | Valid boxes guaranteed, position improved |
+| 3 | cxywh-space loss | 0.227 | 13.5% | Size variance improved but position regressed |
+| 3b | minmax + cxywh combined loss | 0.222 | 10.8% | Combined loss re-collapsed size |
+| **4** | **Exp 2b + augment=off** | **0.370** | **36.5%** | **Augmentation was destroying spatial context** |
+| 5 | SmoothL1 + DIoU (target position fix) | 0.181 | 1.4% | DIoU gamed via oversized boxes (size 3× target) |
+| 7 | Mixup (alpha=0.4) | 0.326 | 26.6% | Blending full-disk images breaks spatial label continuity |
+| TTA | Exp 4 ckpt + 4-way rotation TTA | 0.024 | 0.0% | Model has zero rotation-invariance (no-aug training) |
+| 8 | 768×768 resolution (was 512×512) | 0.373 | 37.4% | +0.8% — resolution is not the bottleneck |
+
+### Final Status (2026-04-28)
+- **Stop criterion confirmed**: 4 consecutive experiments (Exp 5, 7, TTA, 8) failed to improve >5% over Exp 4.
+- **Exp 4 is the final champion**: mean IoU=0.370, IoU@0.5=36.5%. Primary criterion met, secondary not.
+- **Root cause of ceiling**: 1,480 images is too few to learn rotation-invariance AND position/size cues together. Neither loss changes, augmentation strategies, resolution bumps, nor inference-time tricks can overcome this.
+- **What would help**: more data (10×), or a fundamentally different approach (e.g., heatmap regression instead of bbox).
+
+### Key Decisions
+- **ResNet18 over domain-specific models**: No public pretrained model exists for GK-2A IR localization. Weather AI models (GraphCast, Prithvi-WxC) expect gridded atmospheric fields, not raw satellite images. ResNet18's spatial features transfer even to IR data.
+- **Phased unfreezing**: Backbone frozen epochs 1-5, layer3+4 unfrozen epochs 6-20, all unfrozen epoch 21+
+- **Center+size parameterization**: Model internally predicts (cx, cy, w, h), converts to minmax output. Prevents degenerate boxes.
+- **No augmentation**: With 1,480 images, rotation/flip destroyed spatial context needed for localization. This was the single biggest improvement (+0.114 IoU).
+- **v2/ subdirectory**: Separate from V1 to avoid coupling
+- **Future chain**: V2 locates storm → crop → V1 predicts intensity (not implemented yet)
