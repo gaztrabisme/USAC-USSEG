@@ -23,3 +23,4 @@ __pycache__/
 # Scratch images
 *.png
 # (keep wiki/ and code — PNGs are result artifacts)
+results_v2_analysis/
