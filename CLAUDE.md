@@ -132,7 +132,7 @@ python -m v2.evaluate --data_dir dataset_v2/ --checkpoint checkpoints_v2/best_mo
 ## Data
 
 53,969 patches from 1,480 full-disk GK-2A images (11 fragment directories).
-Dataset on 5080 machine (`bppc@100.106.185.34:projects/USAC/GK-2A/data/`).
+Dataset stored outside the repo (GK-2A full-disk images).
 Each fragment contains `IMAGES/GK-2A/<timestamp>/` dirs with:
 - `GK2A_IR105_*.png` — 2200×2200 grayscale 8-bit DN infrared image
 - `product.cbor` — calibration LUT (DN → Kelvin)

@@ -26,7 +26,7 @@ python evaluate.py --model cnnv2 --data_dir dataset/ --checkpoint checkpoints/be
     --output_dir results/ --calibrate
 
 # Tests
-python -m pytest tests/ -v    # 123 tests
+python -m pytest tests/ -v    # 160 tests
 ```
 
 ## How It Works
@@ -49,7 +49,7 @@ python -m pytest tests/ -v    # 123 tests
 ├── models.py            # TyphoonCNNv2 (primary), CNN, MLP
 ├── train.py             # Training loop with checkpointing
 ├── evaluate.py          # Evaluation with isotonic calibration
-├── tests/               # 123 tests (data pipeline + ML pipeline)
+├── tests/               # 160 tests (data pipeline + ML pipeline)
 └── wiki/                # Design docs and experiment analyses
     ├── architecture.md
     ├── analysis-exp1.md # Exp 1: range collapse diagnosis
