@@ -4,13 +4,16 @@ Predicts typhoon intensity from GK-2A satellite infrared imagery using a CNN tha
 
 Given a 240×240 cloud-top temperature patch, the model predicts a **T-number** (1.0–8.0), which maps to wind speed and sea-level pressure via the standard Dvorak lookup table.
 
-## Results
+## Status
 
-| Metric | Value | Target |
-|--------|-------|--------|
-| T-number MAE | 0.55 | < 1.0 |
-| Wind speed MAE | 13.2 kt | < 15 kt |
-| Pressure MAE | 16.0 hPa | — |
+Archived on 2026-10-31. The results reported in this repository should not be relied on. A later review found:
+
+- About 3.6% of training patches contain an impossible temperature of -273°C, and 20.8% contain temperatures below -100°C.
+- Always predicting the maximum T-number gives a T-number error of 0.72, which already passes the 1.0 target.
+- Patches from the same image appear in both the training and test sets.
+- Labels are calculated from the same temperatures the model sees, so they do not measure real storm intensity.
+
+The raw data no longer exists, so these results cannot be rerun.
 
 ## Quick Start
 
@@ -59,7 +62,7 @@ python -m pytest tests/ -v    # 160 tests
     └── log.md           # Session log
 ```
 
-## Experiment History
+## Experiment History (as reported at the time; see Status)
 
 | Exp | Key Change | T-MAE | Wind MAE |
 |-----|-----------|-------|----------|
